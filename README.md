@@ -7,13 +7,33 @@ It reads your sentence, whispers a single command to the terminal, and runs it (
 
 If you treat it like a caffeinated intern with good manners, it is fast, polite, and rarely drops things in `/dev/null` unless you ask.
 
-## What it actually does
+## Quick start (very easy)
 
-- Takes a natural-language prompt like `show files changed today`
-- Calls an Ornith endpoint (`http://192.168.31.99:4000/v1/chat/completions`) with model `ornith-coding`
-- Returns exactly one shell command
-- Executes safely (dangerous commands are blocked by default and printed with a warning)
-- Captures host baseline context at install time for consistent behavior
+Type:
+```bash
+m2 "list files in current directory"
+```
+It runs:
+```bash
+ls
+```
+
+Type:
+```bash
+m2 "delete logs in /tmp"
+```
+It prints:
+```bash
+rm /tmp/*.log  # WARNING: DESTRUCTIVE: removes files/directories
+```
+and does not execute unless you use `--allow-dangerous`.
+
+Type:
+```bash
+m2 --dry-run "show current directory files"
+```
+It prints the generated command without running it.
+
 
 ## Install (one command, no checkout needed)
 
