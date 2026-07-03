@@ -261,11 +261,48 @@ def classify_danger(cmd: str) -> List[str]:
     return out
 
 
+def _host_platform(context: Dict[str, object]) -> str:
+    host = context.get("host") if isinstance(context, dict) else {}
+    if not isinstance(host, dict):
+        return platform.system()
+    value = host.get("platform")
+    return str(value) if value else platform.system()
+
+
+def normalize_command_for_platform(cmd: str, context: Dict[str, object]) -> str:
+    """Patch common GNU/BSD command mismatches before execution.
+
+    The model sometimes emits GNU-only snippets for macOS. Keep the normalizer
+    deliberately narrow: only rewrite known-incompatible patterns into equivalent
+    BSD/POSIX commands, leaving everything else untouched.
+    """
+    host_platform = _host_platform(context).lower()
+    if host_platform != "darwin":
+        return cmd
+
+    # GNU find: find <path> -type f -printf '%s %p\n'
+    # BSD/macOS replacement: find <path> -type f -exec stat -f '%z %N' {} +
+    def repl_find_printf(match: re.Match[str]) -> str:
+        path_expr = match.group("path").strip()
+        return f"find {path_expr} -type f -exec stat -f '%z %N' {{}} +"
+
+    cmd = re.sub(
+        r"find\s+(?P<path>(?:'[^']+'|\"[^\"]+\"|\\\S|[^|;&])+?)\s+-type\s+f\s+-printf\s+(?:'\%s\s+\%p\\n'|\"\%s\s+\%p\\n\")",
+        repl_find_printf,
+        cmd,
+    )
+
+    # GNU du --max-depth=N -> BSD du -d N
+    cmd = re.sub(r"\bdu\s+--max-depth=(\d+)\b", r"du -d \1", cmd)
+    return cmd
+
+
 def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) -> str:
     model = str(cfg["model"])
     backend_url = str(cfg["backend_url"])
     api_key = str(cfg["api_key"])
     timeout = int(cfg.get("timeout", DEFAULT_TIMEOUT))
+    host_platform = _host_platform(context)
 
     system_prompt = (
         "You are a deterministic terminal command planner named m2.\n"
@@ -273,6 +310,10 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
         "No markdown, no quotes, no explanations.\n"
         "Prefer safe commands and minimal scope.\n"
         "Do not include backticks.\n"
+        f"Target host platform: {host_platform}.\n"
+        "Use commands compatible with the target host, not your own environment.\n"
+        "For macOS/Darwin, avoid GNU-only flags such as find -printf, du --max-depth, GNU stat -c, and GNU date -d; use BSD/POSIX alternatives.\n"
+        "For Linux, GNU coreutils/findutils syntax is allowed.\n"
     )
 
     user_payload = {
@@ -420,6 +461,7 @@ def main(argv: List[str]) -> int:
         baseline = collect_baseline_context()
 
     cmd = call_ornith(prompt, cfg, baseline)
+    cmd = normalize_command_for_platform(cmd, baseline)
     return execute_command(cmd, allow_dangerous=args.allow_dangerous, dry_run=args.dry_run)
 
 
