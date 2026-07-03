@@ -297,6 +297,24 @@ def normalize_command_for_platform(cmd: str, context: Dict[str, object]) -> str:
     return cmd
 
 
+def local_fallback_command(prompt: str, context: Dict[str, object]) -> str:
+    """Deterministic offline fallback for common tasks.
+
+    This keeps m2 useful when the model endpoint returns empty content or emits an
+    invalid command for a high-frequency request. Keep this intentionally small
+    and conservative.
+    """
+    normalized = " ".join(prompt.lower().split())
+    host_platform = _host_platform(context).lower()
+
+    if re.search(r"\b(biggest|largest)\b", normalized) and "file" in normalized:
+        if host_platform == "darwin":
+            return "find \"$HOME\" -type f -exec stat -f '%z %N' {} + 2>/dev/null | sort -rn | head -20 | awk '{size=$1; $1=\"\"; sub(/^ /,\"\"); printf \"%.2f GiB %s\\n\", size/1073741824, $0}'"
+        return "find \"$HOME\" -type f -printf '%s %p\\n' 2>/dev/null | sort -rn | head -20 | awk '{size=$1; $1=\"\"; sub(/^ /,\"\"); printf \"%.2f GiB %s\\n\", size/1073741824, $0}'"
+
+    return ""
+
+
 def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) -> str:
     model = str(cfg["model"])
     backend_url = str(cfg["backend_url"])
@@ -358,6 +376,9 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
 
     cmd = _clean_command(str(raw))
     if not cmd:
+        fallback = local_fallback_command(prompt, context)
+        if fallback:
+            return fallback
         raise SystemExit("ornith returned empty command")
     return cmd
 
@@ -461,6 +482,10 @@ def main(argv: List[str]) -> int:
         baseline = collect_baseline_context()
 
     cmd = call_ornith(prompt, cfg, baseline)
+    if not cmd:
+        fallback = local_fallback_command(prompt, baseline)
+        if fallback:
+            cmd = fallback
     cmd = normalize_command_for_platform(cmd, baseline)
     return execute_command(cmd, allow_dangerous=args.allow_dangerous, dry_run=args.dry_run)
 

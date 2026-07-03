@@ -33,7 +33,7 @@ download_file() {
   fi
 }
 
-REMOTE_BASE_URL="${M2_CMD_REMOTE_BASE_URL:-https://raw.githubusercontent.com/machine-machine/m2-cmd/main}"
+REMOTE_BASE_URL="${M2_CMD_REMOTE_BASE_URL:-https://github.com/machine-machine/m2-cmd/raw/refs/heads/main}"
 REMOTE_INSTALL_DIR="${M2_CMD_REMOTE_INSTALL_DIR:-${HOME}/.local/share/m2-cmd}"
 INSTALL_URL="${REMOTE_BASE_URL}/tools/m2-cmd/install.sh"
 AGENT_URL="${REMOTE_BASE_URL}/scripts/m2-agent.py"
