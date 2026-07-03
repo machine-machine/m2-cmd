@@ -38,15 +38,17 @@ It prints the generated command without running it.
 ## Install (one command, no checkout needed)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install-m2.sh | bash
+curl -fsSL https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install-m2.sh | "${SHELL:-bash}" -s --
 ```
 
 This installs a `m2` command that turns your prompt into safe shell commands.
 
+Works in macOS (zsh default) and Linux shells.
+
 If your `m2` binary is not on PATH after install (step 2), rerun with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install-m2.sh | bash -s -- --add-path
+curl -fsSL https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install-m2.sh | "${SHELL:-bash}" -s -- --add-path
 ```
 
 If you already have the repo checked out:
