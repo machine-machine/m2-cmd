@@ -121,7 +121,15 @@ done
 
 mkdir -p "$(dirname "${BIN_PATH}")"
 
-python3 "${AGENT_SCRIPT}" --install --bin "${BIN_PATH}" "${FORWARD_ARGS[@]}"
+# Bash 3.2 on macOS treats an empty array expansion as unbound under
+# `set -u` in some contexts, even when the array was initialized with `=()`.
+# Branch before expanding FORWARD_ARGS so the piped one-command installer works
+# when the user passes only installer flags such as --add-path.
+if [[ ${#FORWARD_ARGS[@]} -gt 0 ]]; then
+  python3 "${AGENT_SCRIPT}" --install --bin "${BIN_PATH}" "${FORWARD_ARGS[@]}"
+else
+  python3 "${AGENT_SCRIPT}" --install --bin "${BIN_PATH}"
+fi
 
 BIN_DIR="$(dirname "${BIN_PATH}")"
 check_and_print_path "${BIN_DIR}"
