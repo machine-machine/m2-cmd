@@ -2,6 +2,19 @@
 
 `m2-cmd` is the headless Ornith-backed command agent.
 
+Welcome to **m2-cmd**: your lazy, slightly suspicious but mostly reliable unix sidekick.
+It reads your sentence, whispers a single command to the terminal, and runs it (unless it smells like chaos).
+
+If you treat it like a caffeinated intern with good manners, it is fast, polite, and rarely drops things in `/dev/null` unless you ask.
+
+## What it actually does
+
+- Takes a natural-language prompt like `show files changed today`
+- Calls an Ornith endpoint (`http://192.168.31.99:4000/v1/chat/completions`) with model `ornith-coding`
+- Returns exactly one shell command
+- Executes safely (dangerous commands are blocked by default and printed with a warning)
+- Captures host baseline context at install time for consistent behavior
+
 ## Install (one command, no checkout needed)
 
 ```bash
