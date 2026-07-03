@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${BASH_SOURCE[0]-}" && "${BASH_SOURCE[0]}" != "bash" && "${BASH_SOURCE[0]}" != "sh" && "${BASH_SOURCE[0]}" != "-" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  SCRIPT_DIR="${PWD}"
+fi
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 AGENT_SCRIPT="${REPO_ROOT}/scripts/m2-agent.py"
 
