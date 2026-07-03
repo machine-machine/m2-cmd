@@ -38,17 +38,23 @@ It prints the generated command without running it.
 ## Install (one command, no checkout needed)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install-m2.sh | bash -s --
+curl -fsSL https://github.com/machine-machine/m2-cmd/raw/refs/heads/main/install-m2.sh | bash -s -- --add-path
 ```
 
 This installs a `m2` command that turns your prompt into safe shell commands.
 
-Works in macOS (zsh default) and Linux shells.
+Works in macOS (zsh default) and Linux shells. The `--add-path` flag adds the install directory to your shell profile for future shells.
 
-If your `m2` binary is not on PATH after install (step 2), rerun with:
+If you do not want the installer to edit your shell profile, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install-m2.sh | bash -s -- --add-path
+curl -fsSL https://github.com/machine-machine/m2-cmd/raw/refs/heads/main/install-m2.sh | bash -s --
+```
+
+If a CDN serves a stale raw GitHub file, this cache-busting variant is equivalent:
+
+```bash
+curl -fsSL 'https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install-m2.sh?cachebust=1' | bash -s -- --add-path
 ```
 
 If you already have the repo checked out:
