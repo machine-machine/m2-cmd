@@ -13,6 +13,7 @@ fi
 DEFAULT_BIN_PATH="${M2_BIN_PATH:-${HOME}/.local/bin/m2}"
 BIN_PATH="${DEFAULT_BIN_PATH}"
 FORWARD_ARGS=()
+ADD_PATH=0
 
 show_help() {
   cat <<'EOF'
@@ -21,6 +22,7 @@ Usage:
 
 Options:
   --bin PATH           Target path for m2 executable (default: ~/.local/bin/m2)
+  --add-path           Add BIN_PATH directory to shell profile for future shells
   -h, --help           Show this help and exit
 
 Any additional arguments are passed through to m2-agent.py.
@@ -30,6 +32,61 @@ Useful examples:
   --api-key sk-...
   --timeout 60
 EOF
+}
+
+check_and_print_path() {
+  local bin_dir="$1"
+
+  if ! command -v m2 >/dev/null; then
+    echo "Path check: '$bin_dir' is not on your current PATH"
+    echo "One-shot for current shell: export PATH=\"${bin_dir}:$PATH\""
+
+    if [[ ${ADD_PATH} -eq 1 ]]; then
+      local shell_name
+      shell_name="${SHELL##*/}"
+      local profile=""
+      local line=''
+      case "${shell_name}" in
+        zsh)
+          profile="${HOME}/.zshrc"
+          ;;
+        bash)
+          profile="${HOME}/.bashrc"
+          ;;
+        fish)
+          profile="${HOME}/.config/fish/config.fish"
+          ;;
+        *)
+          profile="${HOME}/.profile"
+          ;;
+      esac
+
+      mkdir -p "$(dirname "${profile}")"
+      if [[ ! -f "${profile}" ]]; then
+        : > "${profile}"
+      fi
+
+      if [[ "${shell_name}" == fish ]]; then
+        line="set -gx PATH ${bin_dir} \$PATH"
+      else
+        line="export PATH=\"${bin_dir}:\$PATH\" # added by m2-cmd installer"
+      fi
+
+      if grep -Fqx "${line}" "${profile}"; then
+        echo "Path already present in ${profile}"
+      else
+        echo "${line}" >> "${profile}"
+        echo "Added PATH entry to ${profile}"
+      fi
+
+      export PATH="${bin_dir}:$PATH"
+      echo "Also added to current shell for this installer invocation"
+    else
+      echo "If you want this persisted, rerun with --add-path or run the export command above."
+    fi
+  else
+    echo "PATH check: ok (m2 is discoverable)"
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -42,6 +99,10 @@ while [[ $# -gt 0 ]]; do
       fi
       BIN_PATH="$2"
       shift 2
+      ;;
+    --add-path)
+      ADD_PATH=1
+      shift
       ;;
     --help|-h)
       show_help
@@ -58,9 +119,7 @@ mkdir -p "$(dirname "${BIN_PATH}")"
 
 python3 "${AGENT_SCRIPT}" --install --bin "${BIN_PATH}" "${FORWARD_ARGS[@]}"
 
-if ! command -v m2 >/dev/null; then
-  BIN_DIR="$(dirname "${BIN_PATH}")"
-  echo "Path hint: export PATH=\"${BIN_DIR}:$PATH\""
-fi
+BIN_DIR="$(dirname "${BIN_PATH}")"
+check_and_print_path "${BIN_DIR}"
 
 echo "Installed m2 command at ${BIN_PATH}"

@@ -23,6 +23,12 @@ curl -fsSL https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install
 
 This installs a `m2` command that turns your prompt into safe shell commands.
 
+If your `m2` binary is not on PATH after install (step 2), rerun with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/machine-machine/m2-cmd/main/install-m2.sh | bash -s -- --add-path
+```
+
 If you already have the repo checked out:
 
 ```bash
@@ -30,6 +36,9 @@ cd /home/m2spark1/tools/m2-cmd
 ./install-m2.sh
 # or
 ./tools/m2-cmd/install.sh
+
+# If PATH wasn't updated, do:
+./tools/m2-cmd/install.sh --add-path
 ```
 
 ## Remove
