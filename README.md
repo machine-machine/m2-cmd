@@ -103,4 +103,5 @@ If you want to keep captured state files:
 - Uses endpoint `http://192.168.31.99:4000/v1/chat/completions`
 - Blocks destructive commands (`rm`, `mv`, `dd`, etc.) by default, prints a colorful warning to stderr, asks for `y/N` confirmation in interactive terminals, and keeps stdout pipe-friendly
 - Preserves complete multi-line shell snippets, heredocs, and composed pipelines when a task needs more than one command
+- Uses continuation requests for truncated snippets, keeps a sliding context tail, and writes the in-progress snippet to `~/.config/m2-agent/last-generated-snippet.sh.tmp` for recovery/debugging
 - Baseline host context is saved to `~/.config/m2-agent/baseline-context.json` on install

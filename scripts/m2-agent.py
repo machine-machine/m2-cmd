@@ -33,6 +33,8 @@ CONTEXT_FILE = CONFIG_DIR / "baseline-context.json"
 DEFAULT_ENDPOINT = "http://192.168.31.99:4000/v1/chat/completions"
 DEFAULT_MODEL = "ornith-coding"
 DEFAULT_TIMEOUT = 45
+DEFAULT_MAX_TOKENS = 1024
+DEFAULT_CONTINUATION_ROUNDS = 3
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,8 @@ def install_command(args: argparse.Namespace) -> int:
         "model": args.model,
         "api_key": args.api_key,
         "timeout": args.timeout,
+        "max_tokens": args.max_tokens,
+        "continuation_rounds": args.continuation_rounds,
         "script_path": str(Path(__file__).resolve()),
     }
 
@@ -373,45 +377,20 @@ PY"""
         return "ls -la"
 
     return ""
-
-
-def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) -> str:
-    model = str(cfg["model"])
-    backend_url = str(cfg["backend_url"])
-    api_key = str(cfg["api_key"])
-    timeout = int(cfg.get("timeout", DEFAULT_TIMEOUT))
-    host_platform = _host_platform(context)
-
-    system_prompt = (
-        "You are a deterministic terminal automation planner named m2.\n"
-        "Return exactly one shell snippet as plain text.\n"
-        "No markdown, no explanations, no backticks.\n"
-        "Prefer safe commands and minimal scope.\n"
-        "For simple tasks, return one command.\n"
-        "For tasks that need composition, you may return a short bash snippet with pipelines, variables, conditionals, heredocs, or a temporary script that is written and executed.\n"
-        "If you use a heredoc, include the complete terminator line.\n"
-        "Do not leave commands waiting for stdin.\n"
-        f"Target host platform: {host_platform}.\n"
-        "Use commands compatible with the target host, not your own environment.\n"
-        "For macOS/Darwin, avoid GNU-only flags such as find -printf, du --max-depth, GNU stat -c, and GNU date -d; use BSD/POSIX alternatives.\n"
-        "For Linux, GNU coreutils/findutils syntax is allowed.\n"
-    )
-
-    user_payload = {
-        "task": prompt,
-        "host_context": context,
-    }
-
+def _ornith_request(
+    backend_url: str,
+    api_key: str,
+    model: str,
+    messages: List[Dict[str, str]],
+    timeout: int,
+    max_tokens: int,
+) -> Tuple[str, str]:
     body = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(user_payload)},
-        ],
+        "messages": messages,
         "temperature": 0.0,
-        "max_tokens": 256,
+        "max_tokens": max_tokens,
     }
-
     req = request.Request(
         backend_url,
         data=json.dumps(body).encode("utf-8"),
@@ -433,16 +412,103 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
 
     try:
         choice0 = payload["choices"][0]
-        raw = choice0["message"]["content"]
+        raw = str(choice0["message"]["content"] or "")
+        finish_reason = str(choice0.get("finish_reason") or "")
     except (KeyError, IndexError, TypeError):
         raise SystemExit("ornith response missing choices/message/content")
+    return raw, finish_reason
 
-    cmd = _clean_command(str(raw))
+
+def _snippet_state_path() -> Path:
+    return CONFIG_DIR / "last-generated-snippet.sh.tmp"
+
+
+def _write_snippet_state(text: str) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    path = _snippet_state_path()
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _needs_continuation(text: str, finish_reason: str) -> bool:
+    if finish_reason == "length":
+        return True
+    if _heredoc_missing_terminator(text):
+        return True
+    syntax_error = _shell_syntax_error(text)
+    if syntax_error and re.search(r"unexpected EOF|looking for matching|here-document", syntax_error, re.IGNORECASE):
+        return True
+    return False
+
+
+def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) -> str:
+    model = str(cfg["model"])
+    backend_url = str(cfg["backend_url"])
+    api_key = str(cfg["api_key"])
+    timeout = int(cfg.get("timeout", DEFAULT_TIMEOUT))
+    max_tokens = int(cfg.get("max_tokens", DEFAULT_MAX_TOKENS))
+    continuation_rounds = int(cfg.get("continuation_rounds", DEFAULT_CONTINUATION_ROUNDS))
+    host_platform = _host_platform(context)
+
+    system_prompt = (
+        "You are a deterministic terminal automation planner named m2.\n"
+        "Return exactly one shell snippet as plain text.\n"
+        "No markdown, no explanations, no backticks.\n"
+        "Prefer safe commands and minimal scope.\n"
+        "For simple tasks, return one command.\n"
+        "For tasks that need composition, you may return a short bash snippet with pipelines, variables, conditionals, heredocs, or a temporary script that is written and executed.\n"
+        "If you use a heredoc, include the complete terminator line.\n"
+        "Do not leave commands waiting for stdin.\n"
+        "If continuing a previous partial snippet, continue exactly at the next character; do not repeat earlier content.\n"
+        f"Target host platform: {host_platform}.\n"
+        "Use commands compatible with the target host, not your own environment.\n"
+        "For macOS/Darwin, avoid GNU-only flags such as find -printf, du --max-depth, GNU stat -c, and GNU date -d; use BSD/POSIX alternatives.\n"
+        "For Linux, GNU coreutils/findutils syntax is allowed.\n"
+    )
+
+    user_payload = {
+        "task": prompt,
+        "host_context": context,
+    }
+
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": json.dumps(user_payload)},
+    ]
+
+    assembled = ""
+    finish_reason = ""
+    for round_idx in range(continuation_rounds + 1):
+        raw, finish_reason = _ornith_request(backend_url, api_key, model, messages, timeout, max_tokens)
+        if raw:
+            assembled += raw
+            _write_snippet_state(assembled)
+
+        if not _needs_continuation(assembled, finish_reason):
+            break
+
+        tail = assembled[-2500:]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_payload)},
+            {"role": "assistant", "content": tail},
+            {
+                "role": "user",
+                "content": (
+                    "The shell snippet above was truncated and has already been written to a temporary local state file. "
+                    "Continue exactly where it stopped. Return only the missing suffix, no markdown, no explanation, no repeated prefix."
+                ),
+            },
+        ]
+    else:
+        print(f"m2 warning: snippet may still be truncated; partial state at {_snippet_state_path()}", file=sys.stderr)
+
+    cmd = _clean_command(assembled)
     if _heredoc_missing_terminator(cmd):
         fallback = local_fallback_command(prompt, context)
         if fallback:
             return fallback
-        raise SystemExit("ornith returned incomplete heredoc command")
+        raise SystemExit(f"ornith returned incomplete heredoc command; partial state at {_snippet_state_path()}")
     if not cmd:
         fallback = local_fallback_command(prompt, context)
         if fallback:
@@ -453,7 +519,7 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
         fallback = local_fallback_command(prompt, context)
         if fallback:
             return fallback
-        raise SystemExit(f"ornith returned invalid shell syntax: {syntax_error}")
+        raise SystemExit(f"ornith returned invalid shell syntax: {syntax_error}; partial state at {_snippet_state_path()}")
     return cmd
 
 
@@ -559,6 +625,18 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         "--timeout",
         type=int,
         default=int(os.environ.get("M2_ORNITH_TIMEOUT", str(DEFAULT_TIMEOUT))),
+    )
+    p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=int(os.environ.get("M2_ORNITH_MAX_TOKENS", str(DEFAULT_MAX_TOKENS))),
+        help="max tokens per model request before continuation",
+    )
+    p.add_argument(
+        "--continuation-rounds",
+        type=int,
+        default=int(os.environ.get("M2_ORNITH_CONTINUATION_ROUNDS", str(DEFAULT_CONTINUATION_ROUNDS))),
+        help="extra model calls to continue truncated snippets",
     )
     p.add_argument(
         "--bin",
