@@ -272,8 +272,9 @@ def classify_danger(cmd: str) -> List[str]:
             if token == rule.token:
                 dangers.append(rule.reason)
 
-        # Explicit /dev writes / destructive redirections.
-        if re.search(r">\s*/(etc|sys|proc|dev|boot|root|bin|sbin|usr|etc/|var/)", seg):
+        # Explicit dangerous system-path redirections. /dev/null is safe/noisy-output
+        # suppression and should not trigger confirmation.
+        if re.search(r">\s*/(etc|sys|proc|dev/(?!null\b)|boot|root|bin|sbin|usr|var/)\b", seg):
             dangers.append("DESTRUCTIVE redirection to system path")
 
         # Python one-liners that remove files.
@@ -443,12 +444,14 @@ def _write_snippet_state(text: str) -> None:
 
 
 def _needs_continuation(text: str, finish_reason: str) -> bool:
+    # Only continue when the provider explicitly reports token exhaustion, or
+    # when a heredoc has started and has no terminator yet. Generic shell syntax
+    # errors (for example an unclosed quote with finish_reason=stop) are more
+    # often bad model output than recoverable truncation; fall back instead of
+    # appending repeated broken prefixes.
     if finish_reason == "length":
         return True
     if _heredoc_missing_terminator(text):
-        return True
-    syntax_error = _shell_syntax_error(text)
-    if syntax_error and re.search(r"unexpected EOF|looking for matching|here-document", syntax_error, re.IGNORECASE):
         return True
     return False
 
