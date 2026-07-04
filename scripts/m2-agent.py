@@ -364,13 +364,25 @@ PY"""
         return "\n".join([
             'cat > "$HOME/.matrix_colors.sh" <<\'EOF\'',
             '#!/usr/bin/env bash',
-            "printf '\\\\033]10;#00ff41\\\\007'",
-            "printf '\\\\033]11;#000000\\\\007'",
-            "printf '\\\\033]12;#00ff41\\\\007'",
-            "printf '\\\\033[1;32mMatrix terminal colors applied for this session.\\\\033[0m\\\\n'",
-            "printf '\\\\033[2;32mText/cursor set to green, background set to black where supported by your terminal.\\\\033[0m\\\\n'",
+            "printf '\\033]10;#00ff41\\007'",
+            "printf '\\033]11;#000000\\007'",
+            "printf '\\033]12;#00ff41\\007'",
+            "printf '\\033[1;32mMatrix terminal colors applied for this session.\\033[0m\\n'",
+            "printf '\\033[2;32mText/cursor set to green, background set to black where supported by your terminal.\\033[0m\\n'",
             'EOF',
             'bash "$HOME/.matrix_colors.sh"',
+        ])
+
+    if "pong" in normalized and ("browser" in normalized or "open" in normalized or "html" in normalized or "hml" in normalized):
+        opener = "open" if host_platform == "darwin" else "xdg-open"
+        return "\n".join([
+            "cat > pong.html <<'EOF'",
+            "<!doctype html>",
+            "<html><head><meta charset='utf-8'><title>Pong</title><style>html,body{margin:0;height:100%;background:#050;color:#0f0;font-family:monospace;overflow:hidden}canvas{display:block;margin:auto;background:#000;box-shadow:0 0 30px #0f0}</style></head>",
+            "<body><canvas id='c' width='800' height='500'></canvas><script>",
+            "const c=document.getElementById('c'),x=c.getContext('2d');let py=210,ai=210,bx=400,by=250,vx=5,vy=3,ps=0,as=0;addEventListener('mousemove',e=>{const r=c.getBoundingClientRect();py=Math.max(0,Math.min(420,e.clientY-r.top-40));});function rect(a,b,w,h){x.fillRect(a,b,w,h)}function loop(){by+=vy;bx+=vx;if(by<0||by>490)vy*=-1;if(bx<30&&by>py&&by<py+80){vx=Math.abs(vx)+.25}if(bx>760&&by>ai&&by<ai+80){vx=-Math.abs(vx)-.25}if(bx<0){as++;bx=400;by=250;vx=5}if(bx>800){ps++;bx=400;by=250;vx=-5}ai+=(by-ai-40)*.08;x.clearRect(0,0,800,500);x.fillStyle='#0f0';rect(20,py,10,80);rect(770,ai,10,80);rect(bx,by,10,10);for(let y=0;y<500;y+=24)rect(398,y,4,12);x.font='32px monospace';x.fillText(ps,320,45);x.fillText(as,460,45);requestAnimationFrame(loop)}loop();</script></body></html>",
+            "EOF",
+            f"{opener} pong.html >/dev/null 2>&1 || printf 'Created pong.html; open it in your browser.\n'",
         ])
 
     if re.search(r"\b(list|show)\b", normalized) and re.search(r"\b(files?|directory|dir)\b", normalized):
