@@ -598,11 +598,12 @@ def execute_command(cmd: str, allow_dangerous: bool, dry_run: bool) -> int:
 
     print(cmd, file=_command_echo_stream())
 
-    proc = subprocess.run(cmd, shell=True, executable="/bin/bash", text=True, capture_output=True)
-    if proc.stdout:
-        print(proc.stdout.rstrip())
-    if proc.stderr:
-        print(proc.stderr.rstrip(), file=sys.stderr)
+    # Stream child stdout/stderr directly instead of capturing. Capturing makes
+    # long-running/interactive snippets (animations, watchers, REPL-ish scripts)
+    # look like they never launched because output is buffered until exit.
+    # Direct streaming also preserves pipeability: command stdout still flows to
+    # stdout, while m2's generated-command echo goes to stderr when piped.
+    proc = subprocess.run(cmd, shell=True, executable="/bin/bash", text=True)
     return proc.returncode
 
 
