@@ -105,5 +105,5 @@ If you want to keep captured state files:
 
 - Uses model `ornith-coding` by default
 - Uses endpoint `http://192.168.31.99:4000/v1/chat/completions`
-- Blocks destructive commands (`rm`, `mv`, `dd`, etc.) by default, prints a colorful warning to stderr, and keeps stdout pipe-friendly
+- Blocks destructive commands (`rm`, `mv`, `dd`, etc.) by default, prints a colorful warning to stderr, asks for `y/N` confirmation in interactive terminals, and keeps stdout pipe-friendly
 - Baseline host context is saved to `~/.config/m2-agent/baseline-context.json` on install

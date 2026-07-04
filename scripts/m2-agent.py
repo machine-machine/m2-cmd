@@ -201,7 +201,13 @@ def _clean_command(raw: str) -> str:
     # Remove common preambles like "Command:".
     raw = re.sub(r"^(?:command|cmd)\s*[:：]\s*", "", raw, flags=re.IGNORECASE).strip()
 
-    # Keep only first non-empty non-comment line to produce one command string.
+    # Preserve full shell snippets when the model returns a heredoc or a small
+    # multi-line script. Truncating heredocs to the first line produces broken
+    # commands like: cat > file << 'EOF'
+    if "<<" in raw:
+        return raw
+
+    # Keep only first non-empty non-comment line for normal one-line commands.
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     for line in lines:
         if line.startswith("#"):
@@ -210,6 +216,14 @@ def _clean_command(raw: str) -> str:
             continue
         return line
     return lines[0] if lines else ""
+
+
+def _heredoc_missing_terminator(cmd: str) -> bool:
+    match = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", cmd)
+    if not match:
+        return False
+    terminator = match.group(1)
+    return not any(line.strip() == terminator for line in cmd.splitlines()[1:])
 
 
 def _lead_effective_token(segment: str) -> str:
@@ -331,7 +345,15 @@ for dirpath, dirnames, filenames in os.walk(root):
 PY"""
 
     if "matrix" in normalized and re.search(r"\b(color|colors|terminal|theme|look)\b", normalized):
-        return "printf '\\033]10;#00ff41\\007\\033]11;#000000\\007\\033]12;#00ff41\\007\\033[1;32mMatrix terminal colors applied for this session.\\033[0m\\n\\033[2;32mText/cursor set to green, background set to black where supported by your terminal.\\033[0m\\n'"
+        return r"""cat > "$HOME/.matrix_colors.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '\033]10;#00ff41\007'
+printf '\033]11;#000000\007'
+printf '\033]12;#00ff41\007'
+printf '\033[1;32mMatrix terminal colors applied for this session.\033[0m\n'
+printf '\033[2;32mText/cursor set to green, background set to black where supported by your terminal.\033[0m\n'
+EOF
+bash "$HOME/.matrix_colors.sh"""
 
     if re.search(r"\b(list|show)\b", normalized) and re.search(r"\b(files?|directory|dir)\b", normalized):
         return "ls -la"
@@ -399,6 +421,11 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
         raise SystemExit("ornith response missing choices/message/content")
 
     cmd = _clean_command(str(raw))
+    if _heredoc_missing_terminator(cmd):
+        fallback = local_fallback_command(prompt, context)
+        if fallback:
+            return fallback
+        raise SystemExit("ornith returned incomplete heredoc command")
     if not cmd:
         fallback = local_fallback_command(prompt, context)
         if fallback:
@@ -427,19 +454,40 @@ def _command_echo_stream():
     return sys.stdout if sys.stdout.isatty() else sys.stderr
 
 
+def _confirm_dangerous_command(cmd: str, warning: str) -> bool:
+    red_bold = _ansi("\033[1;31m")
+    yellow = _ansi("\033[33m")
+    dim = _ansi("\033[2m")
+    print(_color("⚠ WARNING: potentially destructive command", red_bold), file=sys.stderr)
+    print(_color(f"Reason: {warning}", yellow), file=sys.stderr)
+    print(_color("Generated command:", dim), file=sys.stderr)
+    print(cmd, file=sys.stderr)
+
+    if not sys.stdin.isatty():
+        print(_color("Blocked because stdin is not interactive. Re-run in a terminal or use --allow-dangerous.", dim), file=sys.stderr)
+        return False
+
+    try:
+        answer = input(_color("Execute this command? [y/N] ", red_bold))
+    except (EOFError, KeyboardInterrupt):
+        print("", file=sys.stderr)
+        return False
+    return answer.strip().lower() in {"y", "yes"}
+
+
 def execute_command(cmd: str, allow_dangerous: bool, dry_run: bool) -> int:
     risks = classify_danger(cmd)
     if risks and not allow_dangerous:
         warning = "; ".join(risks)
-        red_bold = _ansi("\033[1;31m")
-        yellow = _ansi("\033[33m")
-        dim = _ansi("\033[2m")
-        print(_color("⚠ WARNING: destructive command blocked", red_bold), file=sys.stderr)
-        print(_color(f"Reason: {warning}", yellow), file=sys.stderr)
-        print(_color("Generated command:", dim), file=sys.stderr)
-        print(cmd, file=sys.stderr)
-        print(_color("Run again with --allow-dangerous to execute it.", dim), file=sys.stderr)
-        return 3
+        if dry_run:
+            red_bold = _ansi("\033[1;31m")
+            yellow = _ansi("\033[33m")
+            print(_color("⚠ WARNING: dry-run command is potentially destructive", red_bold), file=sys.stderr)
+            print(_color(f"Reason: {warning}", yellow), file=sys.stderr)
+            print(cmd)
+            return 0
+        if not _confirm_dangerous_command(cmd, warning):
+            return 3
 
     # Dry-run is intentionally stdout-friendly so `m2 --dry-run ... | pbcopy`
     # or `m2 --dry-run ... | sh` can work when explicitly requested.
