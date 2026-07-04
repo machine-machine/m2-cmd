@@ -33,7 +33,7 @@ CONTEXT_FILE = CONFIG_DIR / "baseline-context.json"
 DEFAULT_ENDPOINT = "http://192.168.31.99:4000/v1/chat/completions"
 DEFAULT_MODEL = "ornith-coding"
 DEFAULT_TIMEOUT = 45
-DEFAULT_MAX_TOKENS = 1024
+DEFAULT_MAX_TOKENS = 1800
 DEFAULT_CONTINUATION_ROUNDS = 3
 
 
@@ -472,6 +472,24 @@ def _needs_continuation(text: str, finish_reason: str) -> bool:
     return False
 
 
+def _continuation_context(text: str, max_chars: int = 3500, max_lines: int = 40) -> str:
+    """Return a line-aware sliding window for continuation prompts."""
+    lines = text.splitlines()
+    tail_lines = lines[-max_lines:]
+    tail = "\n".join(tail_lines)
+    if len(tail) > max_chars:
+        tail = tail[-max_chars:]
+    final_line = lines[-1] if lines else ""
+    return (
+        f"SNIPPET_BYTES={len(text)}\n"
+        f"LAST_LINE={final_line!r}\n"
+        f"LAST_CHARS={text[-120:]!r}\n"
+        "TAIL_START\n"
+        f"{tail}\n"
+        "TAIL_END"
+    )
+
+
 def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) -> str:
     model = str(cfg["model"])
     backend_url = str(cfg["backend_url"])
@@ -489,9 +507,10 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
         "For simple tasks, return one command.\n"
         "For tasks that need composition, you may return a short bash snippet with pipelines, variables, conditionals, heredocs, or a temporary script that is written and executed.\n"
         "For complex tasks, decompose the snippet into clear comment-labeled sections, but still return one complete runnable shell snippet.\n"
+        f"Output budget per response is about {max_tokens} tokens; if the snippet is too large, stop only at a safe boundary when possible.\n"
         "If you use a heredoc, include the complete terminator line.\n"
         "Do not leave commands waiting for stdin.\n"
-        "If continuing a previous partial snippet, continue exactly at the next character; do not repeat earlier content.\n"
+        "If continuing a previous partial snippet, use the supplied LAST_LINE/LAST_CHARS/TAIL context and continue exactly at the next character; do not repeat earlier content.\n"
         f"Target host platform: {host_platform}.\n"
         "Use commands compatible with the target host, not your own environment.\n"
         "For macOS/Darwin, avoid GNU-only flags such as find -printf, du --max-depth, GNU stat -c, and GNU date -d; use BSD/POSIX alternatives.\n"
@@ -519,17 +538,19 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
         if not _needs_continuation(assembled, finish_reason):
             break
 
-        tail = assembled[-2500:]
+        continuation_context = _continuation_context(assembled)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(user_payload)},
-            {"role": "assistant", "content": tail},
+            {"role": "assistant", "content": continuation_context},
             {
                 "role": "user",
                 "content": (
-                    "The shell snippet above was truncated and has already been written to a temporary local state file. "
-                    "Continue exactly where it stopped. Return only the missing suffix, no markdown, no explanation, no repeated prefix. "
-                    "If you need to complete a complex task, continue the same decomposed, comment-labeled runnable snippet."
+                    "SMART PAGINATION CONTINUATION REQUEST. The previous response was truncated and the full partial snippet "
+                    "has been written to a local state file. The assistant message contains SNIPPET_BYTES, LAST_LINE, LAST_CHARS, "
+                    "and a TAIL window from the already-written snippet. Continue exactly after LAST_CHARS. Return only the missing "
+                    "suffix, no markdown, no explanation, no repeated prefix. Preserve the same decomposition sections and complete any "
+                    "open heredoc/string/function cleanly."
                 ),
             },
         ]
@@ -537,6 +558,8 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
         print(f"m2 warning: snippet may still be truncated; partial state at {_snippet_state_path()}", file=sys.stderr)
 
     cmd = _clean_command(assembled)
+    if cmd:
+        _write_snippet_state(cmd)
     if _heredoc_missing_terminator(cmd):
         fallback = local_fallback_command(prompt, context)
         if fallback:

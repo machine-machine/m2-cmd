@@ -104,5 +104,5 @@ If you want to keep captured state files:
 - Blocks destructive commands (`rm`, `mv`, `dd`, etc.) by default, prints a colorful warning to stderr, asks for `y/N` confirmation in interactive terminals, and keeps stdout pipe-friendly
 - Preserves complete multi-line shell snippets, heredocs, and composed pipelines when a task needs more than one command
 - For complex tasks, asks the model to decompose the generated snippet into comment-labeled sections and then prints the complete assembled snippet before execution
-- Uses continuation requests for truncated snippets, keeps a sliding context tail, de-duplicates repeated overlap, and writes the in-progress snippet to `~/.config/m2-agent/last-generated-snippet.sh.tmp` for recovery/debugging
+- Uses continuation requests for truncated snippets, keeps a smart line-aware sliding context (`LAST_LINE`, `LAST_CHARS`, and a tail window), de-duplicates repeated overlap, and writes the in-progress snippet to `~/.config/m2-agent/last-generated-snippet.sh.tmp` for recovery/debugging
 - Baseline host context is saved to `~/.config/m2-agent/baseline-context.json` on install
