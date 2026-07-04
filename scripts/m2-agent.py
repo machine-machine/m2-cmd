@@ -312,6 +312,27 @@ def local_fallback_command(prompt: str, context: Dict[str, object]) -> str:
             return "find \"$HOME\" -type f -exec stat -f '%z %N' {} + 2>/dev/null | sort -rn | head -20 | awk '{size=$1; $1=\"\"; sub(/^ /,\"\"); printf \"%.2f GiB %s\\n\", size/1073741824, $0}'"
         return "find \"$HOME\" -type f -printf '%s %p\\n' 2>/dev/null | sort -rn | head -20 | awk '{size=$1; $1=\"\"; sub(/^ /,\"\"); printf \"%.2f GiB %s\\n\", size/1073741824, $0}'"
 
+    if "tree" in normalized and re.search(r"\b(list|show|print|display)\b", normalized):
+        return """python3 - <<'PY'
+import os
+root='.'
+max_depth=2
+skip={'.git','node_modules','__pycache__','.venv','venv'}
+print(root)
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = [d for d in sorted(dirnames) if d not in skip]
+    depth = 0 if dirpath == root else dirpath[len(root):].strip(os.sep).count(os.sep) + 1
+    if depth >= max_depth:
+        dirnames[:] = []
+    entries = [(d, True) for d in dirnames] + [(f, False) for f in sorted(filenames)]
+    entries = entries[:80]
+    for name, is_dir in entries:
+        print('  ' * (depth + 1) + ('📁 ' if is_dir else '📄 ') + name)
+PY"""
+
+    if re.search(r"\b(list|show)\b", normalized) and re.search(r"\b(files?|directory|dir)\b", normalized):
+        return "ls -la"
+
     return ""
 
 
