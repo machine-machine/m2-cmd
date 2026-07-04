@@ -342,15 +342,17 @@ for dirpath, dirnames, filenames in os.walk(root):
 PY"""
 
     if "matrix" in normalized and re.search(r"\b(color|colors|terminal|theme|look)\b", normalized):
-        return r"""cat > "$HOME/.matrix_colors.sh" <<'EOF'
-#!/usr/bin/env bash
-printf '\033]10;#00ff41\007'
-printf '\033]11;#000000\007'
-printf '\033]12;#00ff41\007'
-printf '\033[1;32mMatrix terminal colors applied for this session.\033[0m\n'
-printf '\033[2;32mText/cursor set to green, background set to black where supported by your terminal.\033[0m\n'
-EOF
-bash "$HOME/.matrix_colors.sh"""
+        return "\n".join([
+            'cat > "$HOME/.matrix_colors.sh" <<\'EOF\'',
+            '#!/usr/bin/env bash',
+            "printf '\\\\033]10;#00ff41\\\\007'",
+            "printf '\\\\033]11;#000000\\\\007'",
+            "printf '\\\\033]12;#00ff41\\\\007'",
+            "printf '\\\\033[1;32mMatrix terminal colors applied for this session.\\\\033[0m\\\\n'",
+            "printf '\\\\033[2;32mText/cursor set to green, background set to black where supported by your terminal.\\\\033[0m\\\\n'",
+            'EOF',
+            'bash "$HOME/.matrix_colors.sh"',
+        ])
 
     if re.search(r"\b(list|show)\b", normalized) and re.search(r"\b(files?|directory|dir)\b", normalized):
         return "ls -la"
