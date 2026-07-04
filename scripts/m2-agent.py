@@ -223,6 +223,21 @@ def _heredoc_missing_terminator(cmd: str) -> bool:
     return not any(line.strip() == terminator for line in cmd.splitlines()[1:])
 
 
+def _shell_syntax_error(cmd: str) -> str:
+    """Return bash -n stderr if a generated snippet is syntactically invalid."""
+    try:
+        proc = subprocess.run(
+            ["/bin/bash", "-n"],
+            input=cmd,
+            text=True,
+            capture_output=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return str(exc)
+    return proc.stderr.strip() if proc.returncode else ""
+
+
 def _lead_effective_token(segment: str) -> str:
     try:
         tokens = shlex.split(segment)
@@ -433,6 +448,12 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
         if fallback:
             return fallback
         raise SystemExit("ornith returned empty command")
+    syntax_error = _shell_syntax_error(cmd)
+    if syntax_error:
+        fallback = local_fallback_command(prompt, context)
+        if fallback:
+            return fallback
+        raise SystemExit(f"ornith returned invalid shell syntax: {syntax_error}")
     return cmd
 
 
