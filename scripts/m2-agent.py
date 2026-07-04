@@ -443,6 +443,22 @@ def _write_snippet_state(text: str) -> None:
     path.chmod(0o600)
 
 
+def _append_continuation(existing: str, suffix: str) -> str:
+    """Append a continuation while removing accidental repeated overlap.
+
+    Some models repeat the last line or a tail fragment when asked to continue.
+    Removing the largest suffix/prefix overlap makes multi-request snippet
+    assembly much more tolerant without requiring a fragile exact protocol.
+    """
+    if not existing or not suffix:
+        return existing + suffix
+    max_overlap = min(len(existing), len(suffix), 4000)
+    for size in range(max_overlap, 0, -1):
+        if existing[-size:] == suffix[:size]:
+            return existing + suffix[size:]
+    return existing + suffix
+
+
 def _needs_continuation(text: str, finish_reason: str) -> bool:
     # Only continue when the provider explicitly reports token exhaustion, or
     # when a heredoc has started and has no terminator yet. Generic shell syntax
@@ -472,6 +488,7 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
         "Prefer safe commands and minimal scope.\n"
         "For simple tasks, return one command.\n"
         "For tasks that need composition, you may return a short bash snippet with pipelines, variables, conditionals, heredocs, or a temporary script that is written and executed.\n"
+        "For complex tasks, decompose the snippet into clear comment-labeled sections, but still return one complete runnable shell snippet.\n"
         "If you use a heredoc, include the complete terminator line.\n"
         "Do not leave commands waiting for stdin.\n"
         "If continuing a previous partial snippet, continue exactly at the next character; do not repeat earlier content.\n"
@@ -496,7 +513,7 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
     for round_idx in range(continuation_rounds + 1):
         raw, finish_reason = _ornith_request(backend_url, api_key, model, messages, timeout, max_tokens)
         if raw:
-            assembled += raw
+            assembled = _append_continuation(assembled, raw)
             _write_snippet_state(assembled)
 
         if not _needs_continuation(assembled, finish_reason):
@@ -511,7 +528,8 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
                 "role": "user",
                 "content": (
                     "The shell snippet above was truncated and has already been written to a temporary local state file. "
-                    "Continue exactly where it stopped. Return only the missing suffix, no markdown, no explanation, no repeated prefix."
+                    "Continue exactly where it stopped. Return only the missing suffix, no markdown, no explanation, no repeated prefix. "
+                    "If you need to complete a complex task, continue the same decomposed, comment-labeled runnable snippet."
                 ),
             },
         ]
