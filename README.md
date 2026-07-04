@@ -22,11 +22,7 @@ Type:
 ```bash
 m2 "delete logs in /tmp"
 ```
-It prints:
-```bash
-rm /tmp/*.log  # WARNING: DESTRUCTIVE: removes files/directories
-```
-and does not execute unless you use `--allow-dangerous`.
+It prints a colorful warning and asks before executing destructive commands.
 
 Type:
 ```bash
@@ -106,4 +102,5 @@ If you want to keep captured state files:
 - Uses model `ornith-coding` by default
 - Uses endpoint `http://192.168.31.99:4000/v1/chat/completions`
 - Blocks destructive commands (`rm`, `mv`, `dd`, etc.) by default, prints a colorful warning to stderr, asks for `y/N` confirmation in interactive terminals, and keeps stdout pipe-friendly
+- Preserves complete multi-line shell snippets, heredocs, and composed pipelines when a task needs more than one command
 - Baseline host context is saved to `~/.config/m2-agent/baseline-context.json` on install

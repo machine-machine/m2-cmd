@@ -201,21 +201,18 @@ def _clean_command(raw: str) -> str:
     # Remove common preambles like "Command:".
     raw = re.sub(r"^(?:command|cmd)\s*[:：]\s*", "", raw, flags=re.IGNORECASE).strip()
 
-    # Preserve full shell snippets when the model returns a heredoc or a small
-    # multi-line script. Truncating heredocs to the first line produces broken
-    # commands like: cat > file << 'EOF'
-    if "<<" in raw:
+    # Preserve full shell snippets when the model returns a heredoc, pipeline
+    # composition, or small multi-line script. Truncating heredocs/scripts to the
+    # first line produces broken commands like: cat > file << 'EOF'
+    lines = [ln.rstrip() for ln in raw.splitlines() if ln.strip()]
+    non_comment_lines = [ln for ln in lines if not ln.lstrip().startswith("#") and "```" not in ln]
+    if "<<" in raw or len(non_comment_lines) > 1:
         return raw
 
     # Keep only first non-empty non-comment line for normal one-line commands.
-    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-    for line in lines:
-        if line.startswith("#"):
-            continue
-        if "```" in line:
-            continue
-        return line
-    return lines[0] if lines else ""
+    for line in non_comment_lines:
+        return line.strip()
+    return lines[0].strip() if lines else ""
 
 
 def _heredoc_missing_terminator(cmd: str) -> bool:
@@ -369,11 +366,14 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
     host_platform = _host_platform(context)
 
     system_prompt = (
-        "You are a deterministic terminal command planner named m2.\n"
-        "Return exactly one shell command as plain text.\n"
-        "No markdown, no quotes, no explanations.\n"
+        "You are a deterministic terminal automation planner named m2.\n"
+        "Return exactly one shell snippet as plain text.\n"
+        "No markdown, no explanations, no backticks.\n"
         "Prefer safe commands and minimal scope.\n"
-        "Do not include backticks.\n"
+        "For simple tasks, return one command.\n"
+        "For tasks that need composition, you may return a short bash snippet with pipelines, variables, conditionals, heredocs, or a temporary script that is written and executed.\n"
+        "If you use a heredoc, include the complete terminator line.\n"
+        "Do not leave commands waiting for stdin.\n"
         f"Target host platform: {host_platform}.\n"
         "Use commands compatible with the target host, not your own environment.\n"
         "For macOS/Darwin, avoid GNU-only flags such as find -printf, du --max-depth, GNU stat -c, and GNU date -d; use BSD/POSIX alternatives.\n"
