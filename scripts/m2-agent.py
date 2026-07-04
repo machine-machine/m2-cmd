@@ -404,11 +404,31 @@ def call_ornith(prompt: str, cfg: Dict[str, Any], context: Dict[str, object]) ->
     return cmd
 
 
+def _ansi(style: str) -> str:
+    if os.environ.get("NO_COLOR"):
+        return ""
+    return style
+
+
+def _color(text: str, style: str) -> str:
+    if not style:
+        return text
+    reset = _ansi("\033[0m")
+    return f"{style}{text}{reset}"
+
+
 def execute_command(cmd: str, allow_dangerous: bool, dry_run: bool) -> int:
     risks = classify_danger(cmd)
     if risks and not allow_dangerous:
         warning = "; ".join(risks)
-        print(f"{cmd}  # WARNING: {warning}")
+        red_bold = _ansi("\033[1;31m")
+        yellow = _ansi("\033[33m")
+        dim = _ansi("\033[2m")
+        print(_color("⚠ WARNING: destructive command blocked", red_bold))
+        print(_color(f"Reason: {warning}", yellow))
+        print(_color("Generated command:", dim))
+        print(cmd)
+        print(_color("Run again with --allow-dangerous to execute it.", dim))
         return 3
 
     print(cmd)
