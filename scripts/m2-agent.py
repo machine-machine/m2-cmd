@@ -608,7 +608,11 @@ def execute_command(cmd: str, allow_dangerous: bool, dry_run: bool) -> int:
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Headless m2 agent (Ornith-backed)")
-    p.add_argument("prompt", nargs="*", help="natural-language task")
+    # Capture the prompt as the remainder so shell-looking prompts like
+    # `m2 rm -rf /tmp/x` are treated as natural language instead of argparse
+    # options. m2 will still classify dangerous generated commands before
+    # execution.
+    p.add_argument("prompt", nargs=argparse.REMAINDER, help="natural-language task")
     p.add_argument(
         "--install",
         action="store_true",
@@ -690,6 +694,9 @@ def main(argv: List[str]) -> int:
 
     if not args.prompt:
         raise SystemExit("No prompt provided. Example: m2 \"list files\"")
+
+    if args.prompt and args.prompt[0] == "--":
+        args.prompt = args.prompt[1:]
 
     prompt = " ".join(args.prompt)
     baseline = load_baseline_context()
