@@ -417,6 +417,13 @@ def _color(text: str, style: str) -> str:
     return f"{style}{text}{reset}"
 
 
+def _command_echo_stream():
+    # Keep stdout pipeable: when m2 is used in a pipeline, stdout should contain
+    # only the executed command's stdout. The generated command/status messages go
+    # to stderr unless the user is in an interactive terminal.
+    return sys.stdout if sys.stdout.isatty() else sys.stderr
+
+
 def execute_command(cmd: str, allow_dangerous: bool, dry_run: bool) -> int:
     risks = classify_danger(cmd)
     if risks and not allow_dangerous:
@@ -424,16 +431,20 @@ def execute_command(cmd: str, allow_dangerous: bool, dry_run: bool) -> int:
         red_bold = _ansi("\033[1;31m")
         yellow = _ansi("\033[33m")
         dim = _ansi("\033[2m")
-        print(_color("⚠ WARNING: destructive command blocked", red_bold))
-        print(_color(f"Reason: {warning}", yellow))
-        print(_color("Generated command:", dim))
-        print(cmd)
-        print(_color("Run again with --allow-dangerous to execute it.", dim))
+        print(_color("⚠ WARNING: destructive command blocked", red_bold), file=sys.stderr)
+        print(_color(f"Reason: {warning}", yellow), file=sys.stderr)
+        print(_color("Generated command:", dim), file=sys.stderr)
+        print(cmd, file=sys.stderr)
+        print(_color("Run again with --allow-dangerous to execute it.", dim), file=sys.stderr)
         return 3
 
-    print(cmd)
+    # Dry-run is intentionally stdout-friendly so `m2 --dry-run ... | pbcopy`
+    # or `m2 --dry-run ... | sh` can work when explicitly requested.
     if dry_run:
+        print(cmd)
         return 0
+
+    print(cmd, file=_command_echo_stream())
 
     proc = subprocess.run(cmd, shell=True, executable="/bin/bash", text=True, capture_output=True)
     if proc.stdout:
