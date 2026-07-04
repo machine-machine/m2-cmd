@@ -330,6 +330,9 @@ for dirpath, dirnames, filenames in os.walk(root):
         print('  ' * (depth + 1) + ('📁 ' if is_dir else '📄 ') + name)
 PY"""
 
+    if "matrix" in normalized and re.search(r"\b(color|colors|terminal|theme|look)\b", normalized):
+        return "printf '\\033]10;#00ff41\\007\\033]11;#000000\\007\\033]12;#00ff41\\007\\033[1;32mMatrix terminal colors applied for this session.\\033[0m\\n\\033[2;32mText/cursor set to green, background set to black where supported by your terminal.\\033[0m\\n'"
+
     if re.search(r"\b(list|show)\b", normalized) and re.search(r"\b(files?|directory|dir)\b", normalized):
         return "ls -la"
 
