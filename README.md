@@ -69,6 +69,26 @@ cd /home/m2spark1/tools/m2-cmd
 ./tools/m2-cmd/install.sh --add-path
 ```
 
+## Update / force reinstall (one command)
+
+Use this when you already installed `m2` and want to pull the latest installer + agent files, or if your local copy got stuck on stale raw GitHub content:
+
+```bash
+rm -rf "$HOME/.local/share/m2-cmd" && M2_CMD_REMOTE_BASE_URL="https://github.com/machine-machine/m2-cmd/raw/refs/heads/main" bash -c 'curl -fsSL "$M2_CMD_REMOTE_BASE_URL/install-m2.sh" | bash -s -- --add-path'
+```
+
+Then either open a new shell or run:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Verify the installed copy:
+
+```bash
+m2 --help
+```
+
 ## Remove
 
 ```bash
